@@ -1,0 +1,496 @@
+---
+title: "indicador_6"
+format: html
+---
+
+```{r}
+library(tidyr)
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(stringr)
+library(openxlsx)
+```
+
+```{r}
+ruta_archivo = "C:/Users/ASUS/Documents/OPS/Final/Entregables/OPS_BBDD_FINAL.xlsx"
+datos = read_xlsx(ruta_archivo)
+```
+
+```{r}
+# 1. Preparar datos para gastos mensuales (P26) y porcentaje del ingreso (P27)
+
+# Seleccionar columnas relevantes
+datos_gastos <- datos %>%
+  select(`_uuid`, P26, P27) %>%  # Incluir _uuid para contar personas únicas
+  mutate(
+    across(c(P26, P27), as.numeric)
+  ) %>%
+  # Filtrar valores missing y negativos
+  filter(!is.na(P26) & P26 >= 0 & !is.na(P27) & P27 >= 0)
+
+# Calcular promedios y N (personas únicas)
+promedio_p26 <- mean(datos_gastos$P26, na.rm = TRUE)
+n_p26 <- n_distinct(datos_gastos$`_uuid`)  # Personas únicas
+
+promedio_p27 <- mean(datos_gastos$P27, na.rm = TRUE)
+n_p27 <- n_distinct(datos_gastos$`_uuid`)  # Personas únicas
+
+# Crear datasets para gráficos
+datos_grafico_p26 <- data.frame(
+  Categoria = "Gasto mensual promedio\nen salud",
+  Valor = promedio_p26,
+  N = n_p26
+) %>%
+  mutate(
+    Posicion_N = Valor + max(Valor, na.rm = TRUE) * 0.05
+  )
+
+datos_grafico_p27 <- data.frame(
+  Categoria = "Porcentaje del ingreso familiar\ndestinado a salud",
+  Valor = promedio_p27,
+  N = n_p27
+) %>%
+  mutate(
+    Posicion_N = Valor + max(Valor, na.rm = TRUE) * 0.05
+  )
+```
+
+```{r}
+# 2. Gráfico 1: Gasto mensual promedio en salud (P26)
+ggplot(datos_grafico_p26, aes(x = Categoria, y = Valor)) +
+  geom_bar(stat = "identity", fill = "#0077b6", width = 0.5) +
+  
+  # Etiqueta de valor (dentro de la barra)
+  geom_text(aes(label = paste0("S/", round(Valor, 1))),
+            position = position_stack(vjust = 0.5),
+            color = "white",
+            fontface = "bold",
+            size = 5) +
+  
+  # Etiqueta de N (fuera de la barra)
+  geom_text(aes(y = Posicion_N, label = paste0("N=", N)),
+            color = "black",
+            fontface = "bold",
+            size = 4,
+            vjust = -0.5) +
+  
+  labs(
+    title = "Gasto mensual promedio en salud familiar",
+    subtitle = "N = número de personas únicas",
+    x = "",
+    y = ""
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold",
+                              margin = margin(b = 10)),
+    plot.subtitle = element_text(hjust = 0.5, size = 11,
+                                 margin = margin(b = 15)),
+    axis.text.x = element_text(size = 11),
+    axis.text.y = element_text(size = 10),
+    
+    # Eliminar líneas de cuadrícula
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    
+    plot.margin = margin(t = 20, r = 20, b = 20, l = 20)
+  )
+```
+
+```{r}
+# 3. Gráfico 2: Porcentaje del ingreso familiar destinado a salud (P27)
+ggplot(datos_grafico_p27, aes(x = Categoria, y = Valor)) +
+  geom_bar(stat = "identity", fill = "#4fa8d9", width = 0.5) +
+  
+  # Etiqueta de valor (dentro de la barra)
+  geom_text(aes(label = paste0(round(Valor, 1), "%")),
+            position = position_stack(vjust = 0.5),
+            color = "white",
+            fontface = "bold",
+            size = 5) +
+  
+  # Etiqueta de N (fuera de la barra)
+  geom_text(aes(y = Posicion_N, label = paste0("N=", N)),
+            color = "black",
+            fontface = "bold",
+            size = 4,
+            vjust = -0.5) +
+  
+  labs(
+    title = "Porcentaje del ingreso familiar destinado a salud",
+    subtitle = "N = número de personas únicas",
+    x = "",
+    y = ""
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold",
+                              margin = margin(b = 10)),
+    plot.subtitle = element_text(hjust = 0.5, size = 11,
+                                 margin = margin(b = 15)),
+    axis.text.x = element_text(size = 11),
+    axis.text.y = element_text(size = 10),
+    
+    # Eliminar líneas de cuadrícula
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    
+    plot.margin = margin(t = 20, r = 20, b = 20, l = 20)
+  )
+```
+
+```{r}
+# 4. Análisis adicional: distribución de los gastos y porcentajes
+
+# Estadísticas descriptivas
+estadisticas_gastos <- datos_gastos %>%
+  summarise(
+    `Gasto mínimo (S/)` = min(P26),
+    `Gasto máximo (S/)` = max(P26),
+    `Gasto promedio (S/)` = round(mean(P26), 1),
+    `Gasto mediano (S/)` = round(median(P26), 1),
+    `Porcentaje mínimo (%)` = min(P27),
+    `Porcentaje máximo (%)` = max(P27),
+    `Porcentaje promedio (%)` = round(mean(P27), 1),
+    `Porcentaje mediano (%)` = round(median(P27), 1),
+    `N personas únicas` = n_distinct(`_uuid`),
+    .groups = 'drop'
+  )
+
+print("Estadísticas descriptivas de gastos en salud:")
+print(estadisticas_gastos)
+
+# Tabla de frecuencias para porcentajes del ingreso
+frecuencias_porcentaje <- datos_gastos %>%
+  mutate(
+    Grupo_Porcentaje = case_when(
+      P27 == 0 ~ "0%",
+      P27 <= 5 ~ "1-5%",
+      P27 <= 10 ~ "6-10%",
+      P27 <= 20 ~ "11-20%",
+      P27 > 20 ~ "Más de 20%"
+    )
+  ) %>%
+  count(Grupo_Porcentaje) %>%
+  mutate(Porcentaje = n / sum(n) * 100)
+
+print("Distribución del porcentaje del ingreso destinado a salud:")
+print(frecuencias_porcentaje)
+```
+
+```{r}
+# 5. Gráfico adicional: distribución del porcentaje del ingreso
+ggplot(frecuencias_porcentaje, aes(x = reorder(Grupo_Porcentaje, -Porcentaje), y = Porcentaje)) +
+  geom_bar(stat = "identity", fill = "#0077b6", width = 0.7) +
+  
+  # Etiquetas de porcentaje
+  geom_text(aes(label = paste0(round(Porcentaje, 1), "%")),
+            position = position_stack(vjust = 0.5),
+            color = "white",
+            fontface = "bold",
+            size = 4) +
+  
+  # Etiquetas de frecuencia
+  geom_text(aes(label = paste0("N=", n), y = Porcentaje),
+            position = position_stack(vjust = 0.8),
+            color = "white",
+            fontface = "bold",
+            size = 3.5) +
+  
+  labs(
+    title = "Distribución del porcentaje del ingreso familiar\ndestinado a salud",
+    subtitle = "N = número de personas únicas",
+    x = "Porcentaje del ingreso",
+    y = "Porcentaje de familias"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold",
+                              margin = margin(b = 15)),
+    plot.subtitle = element_text(hjust = 0.5, size = 11,
+                                 margin = margin(b = 10)),
+    axis.text.x = element_text(size = 11),
+    axis.text.y = element_text(size = 10),
+    
+    # Eliminar líneas de cuadrícula
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    
+    plot.margin = margin(t = 20, r = 20, b = 20, l = 20)
+  )
+```
+
+```{r}
+# 6. Preparar datos para percepción del monto (P28)
+
+# Definir etiquetas para las categorías
+etiquetas_percepcion <- c(
+  "1" = "Muy alto",
+  "2" = "Alto", 
+  "3" = "Mediano",
+  "4" = "Bajo",
+  "5" = "Muy bajo"
+)
+
+# Procesar datos de P28
+datos_p28 <- datos %>%
+  select(`_uuid`, P28) %>%  # Incluir _uuid para contar personas únicas
+  mutate(
+    P28 = as.numeric(P28),
+    # Convertir a factor con etiquetas
+    Percepcion = factor(
+      as.character(P28),
+      levels = names(etiquetas_percepcion),
+      labels = etiquetas_percepcion
+    )
+  ) %>%
+  filter(!is.na(Percepcion) & P28 %in% 1:5)  # Filtrar valores válidos
+
+# Calcular frecuencias y porcentajes (con personas únicas)
+datos_percepcion <- datos_p28 %>%
+  group_by(Percepcion) %>%
+  summarise(
+    N_Personas = n_distinct(`_uuid`),  # Personas únicas
+    .groups = 'drop'
+  ) %>%
+  mutate(
+    Porcentaje = N_Personas / sum(N_Personas),
+    # Orden personalizado para mantener el orden lógico de la escala
+    Orden = case_when(
+      Percepcion == "Muy alto" ~ 1,
+      Percepcion == "Alto" ~ 2,
+      Percepcion == "Mediano" ~ 3,
+      Percepcion == "Bajo" ~ 4,
+      Percepcion == "Muy bajo" ~ 5
+    )
+  ) %>%
+  arrange(Orden)
+
+# Para gráfico apilado, necesitamos crear una categoría única para el eje X
+datos_apilados <- datos_percepcion %>%
+  mutate(Categoria = "")
+
+# Calcular posición para etiquetas en gráfico apilado
+datos_apilados <- datos_apilados %>%
+  arrange(desc(Orden)) %>%
+  mutate(
+    Posicion_Acumulada = cumsum(Porcentaje) - Porcentaje/2
+  )
+```
+
+```{r}
+# 7. Gráfico: Percepción del monto gastado - BARRAS HORIZONTALES APILADAS
+ggplot(datos_apilados, aes(x = Categoria, y = Porcentaje, fill = reorder(Percepcion, Orden))) +
+  geom_bar(stat = "identity", position = "stack", width = 0.6) +
+  
+  # Etiquetas de porcentaje (dentro de los segmentos)
+  geom_text(aes(label = ifelse(Porcentaje >= 0.05, 
+                              percent(Porcentaje, accuracy = 1), 
+                              "")),
+            position = position_stack(vjust = 0.5),
+            color = "white",
+            fontface = "bold",
+            size = 4.5) +
+  
+  # Etiqueta de N total (fuera de la barra) - AHORA CON PERSONAS ÚNICAS
+  geom_text(aes(x = Categoria, y = 1.10, 
+                label = paste0("N=", sum(N_Personas))),
+            inherit.aes = FALSE,
+            color = "black",
+            fontface = "bold",
+            size = 4.2,
+            vjust = 0) +
+  
+  # Paleta de colores progresiva (de alto a bajo)
+  scale_fill_manual(
+    values = c(
+      "Muy alto" = "#002b4a",
+      "Alto" = "#00406d", 
+      "Mediano" = "#0077b6",
+      "Bajo" = "#4fa8d9",
+      "Muy bajo" = "#87ceeb"
+    ),
+    name = ""
+  ) +
+  
+  guides(fill = guide_legend(nrow = 1, reverse = FALSE)) +
+  
+  scale_y_continuous(
+    labels = percent,
+    expand = expansion(mult = c(0, 0.15))
+  ) +
+  
+  coord_flip() +
+  labs(
+    title = "Percepción del monto gastado en salud familiar",
+    subtitle = "N = número de personas únicas",
+    x = "",
+    y = "\nPercepción del monto:"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold",
+                              margin = margin(b = 10)),
+    plot.subtitle = element_text(hjust = 0.5, size = 11,
+                                 margin = margin(b = 15)),
+    
+    # Ejes
+    axis.text.y = element_text(size = 12, face = "bold"),
+    axis.text.x = element_text(size = 10),
+    
+    # Leyenda
+    legend.position = "bottom",
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 11, face = "bold"),
+    
+    # Eliminar líneas de cuadrícula
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    
+    plot.margin = margin(t = 20, r = 20, b = 20, l = 20)
+  )
+```
+
+```{r}
+# 8. Tabla de resumen para percepción
+print("Resumen de percepciones del monto gastado:")
+print(datos_percepcion)
+
+# Estadísticas adicionales
+total_respuestas_p28 <- sum(datos_percepcion$N_Personas)
+print(paste("Total de personas únicas:", total_respuestas_p28))
+
+# Calcular moda (categoría más frecuente)
+moda <- datos_percepcion %>%
+  filter(N_Personas == max(N_Personas)) %>%
+  pull(Percepcion)
+
+print(paste("Categoría más frecuente:", moda))
+```
+
+```{r}
+# 9. Exportación a Excel - Combinando ambos análisis
+
+# Crear workbook
+wb <- createWorkbook()
+
+# Hoja 1: Resumen de gastos mensuales
+tabla_resumen_gastos <- data.frame(
+  Indicador = c("Gasto mensual promedio en salud (P26)", 
+                "Porcentaje del ingreso destinado a salud (P27)"),
+  Valor = c(promedio_p26, promedio_p27),
+  Valor_Formateado = c(paste0("S/", round(promedio_p26, 1)), 
+                      paste0(round(promedio_p27, 1), "%")),
+  N_Personas = c(n_p26, n_p27),
+  Descripcion = c(
+    "Gasto familiar mensual promedio en servicios y productos de salud",
+    "Porcentaje promedio del ingreso familiar mensual destinado a salud"
+  )
+)
+
+addWorksheet(wb, "01_Resumen_Gastos")
+writeDataTable(wb, "01_Resumen_Gastos", tabla_resumen_gastos)
+
+# Hoja 2: Estadísticas detalladas de gastos
+addWorksheet(wb, "02_Estadisticas_Gastos")
+writeDataTable(wb, "02_Estadisticas_Gastos", estadisticas_gastos)
+
+# Hoja 3: Distribución de porcentajes de gasto
+addWorksheet(wb, "03_Distribucion_Porcentajes")
+writeDataTable(wb, "03_Distribucion_Porcentajes", frecuencias_porcentaje)
+
+# Hoja 4: Resumen de percepciones (P28)
+tabla_percepcion_export <- datos_percepcion %>%
+  select(Percepcion, N_Personas, Porcentaje) %>%
+  mutate(
+    Porcentaje_Formateado = percent(Porcentaje, accuracy = 0.1),
+    Orden_Escala = c("1 - Muy alto", "2 - Alto", "3 - Mediano", "4 - Bajo", "5 - Muy bajo")
+  )
+
+addWorksheet(wb, "04_Percepcion_Monto")
+writeDataTable(wb, "04_Percepcion_Monto", tabla_percepcion_export)
+
+# Hoja 5: Datos detallados combinados
+datos_detallados_combinados <- datos %>%
+  select(`_uuid`, P26, P27, P28) %>%
+  mutate(
+    P26 = as.numeric(P26),
+    P27 = as.numeric(P27),
+    P28 = as.numeric(P28),
+    P28_Etiqueta = case_when(
+      P28 == 1 ~ "Muy alto",
+      P28 == 2 ~ "Alto",
+      P28 == 3 ~ "Mediano",
+      P28 == 4 ~ "Bajo",
+      P28 == 5 ~ "Muy bajo",
+      TRUE ~ NA_character_
+    )
+  )
+
+addWorksheet(wb, "05_Datos_Detallados")
+writeDataTable(wb, "05_Datos_Detallados", datos_detallados_combinados)
+
+# Hoja 6: Metodología
+metodologia_combinada <- data.frame(
+  Variable = c("P26", "P27", "P28", "N (base de cálculo)", "Filtros aplicados"),
+  Descripcion = c(
+    "Gasto familiar mensual en servicios y productos de salud (en soles)",
+    "Porcentaje del ingreso familiar mensual destinado a salud",
+    "Percepción sobre el monto gastado en salud (escala de 1 a 5)",
+    "Todas las bases N representan el número de PERSONAS ÚNICAS (UUID) que respondieron",
+    "Se excluyen valores NA y valores negativos. Se incluyen ceros para gastos."
+  ),
+  Ejemplo = c(
+    "150, 200, 300 (soles)",
+    "5%, 10%, 15% del ingreso familiar",
+    "1 = Muy alto, 2 = Alto, 3 = Mediano, 4 = Bajo, 5 = Muy bajo",
+    "N=150 personas (no 150 respuestas)",
+    "Valores válidos: P26/P27 >= 0, P28 entre 1-5"
+  )
+)
+
+addWorksheet(wb, "06_Metodologia")
+writeDataTable(wb, "06_Metodologia", metodologia_combinada)
+
+# Aplicar formatos
+headerStyle <- createStyle(
+  textDecoration = "bold", fgFill = "#0077b6", fontColour = "white"
+)
+
+hojas <- sheets(wb)
+for (hoja in hojas) {
+  addStyle(wb, hoja, headerStyle, rows = 1, cols = 1:15, gridExpand = TRUE)
+  setColWidths(wb, hoja, cols = 1:15, widths = "auto")
+}
+
+# Guardar archivo
+ruta_excel_combinado <- "C:/Users/ASUS/Documents/OPS/Final/Entregables/Resultado_Final_Gastos_Percepcion.xlsx"
+
+# Asegurarse de que el directorio existe
+dir.create(dirname(ruta_excel_combinado), recursive = TRUE, showWarnings = FALSE)
+
+saveWorkbook(wb, ruta_excel_combinado, overwrite = TRUE)
+
+cat("ANÁLISIS COMBINADO DE GASTOS Y PERCEPCIÓN COMPLETADO\n")
+cat("Archivo Excel generado:", ruta_excel_combinado, "\n")
+cat("Gasto mensual promedio:", round(promedio_p26, 1), "soles | N =", n_p26, "personas\n")
+cat("Porcentaje del ingreso:", round(promedio_p27, 1), "% | N =", n_p27, "personas\n")
+cat("Percepción del gasto: Moda =", moda, "| N =", total_respuestas_p28, "personas\n")
+```
+

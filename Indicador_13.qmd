@@ -1,0 +1,562 @@
+---
+title: "Indicador_13"
+format: html
+---
+
+```{r}
+library(tidyr)
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(stringr)
+library(openxlsx)
+```
+
+```{r}
+ruta_archivo = "C:/Users/ASUS/Documents/OPS/Final/Entregables/OPS_BBDD_FINAL_tablas_2.xlsx"
+datos = read_xlsx(ruta_archivo)
+```
+
+```{r}
+# 1. Preparar datos para P18 (gráfico total) - CRITERIO ACTUALIZADO
+datos_p18 <- datos %>%
+  select(P18) %>%
+  mutate(
+    # Convertir a carácter para manejar vacíos
+    P18_char = as.character(P18),
+    # CRITERIO ACTUALIZADO: Sí cumple cuando P18=1 o vacío, No cumple cuando P18=2
+    Categoria = case_when(
+      P18_char == "1" | P18_char == "" ~ "Sí cumple",  # P18=1 o vacío
+      P18_char == "2" ~ "No cumple",                   # Solo P18=2 es "No cumple"
+      TRUE ~ "Excluido"  # Otros valores se excluyen
+    )
+  ) %>%
+  filter(Categoria %in% c("Sí cumple", "No cumple")) %>%  # Solo mantener categorías válidas
+  mutate(Categoria = factor(Categoria, levels = c("Sí cumple", "No cumple")))
+
+# Calcular frecuencias y porcentajes
+datos_p18_agg <- datos_p18 %>%
+  group_by(Categoria) %>%
+  summarise(N = n()) %>%
+  mutate(Porcentaje = N / sum(N))
+
+# Calcular N total (solo los incluidos en el análisis)
+total_n <- sum(datos_p18_agg$N)
+
+# Verificación
+cat("Distribución de P18:\n")
+cat("Sí cumple (P18=1 o vacío):", datos_p18_agg$N[datos_p18_agg$Categoria == "Sí cumple"], "\n")
+cat("No cumple (P18=2):", datos_p18_agg$N[datos_p18_agg$Categoria == "No cumple"], "\n")
+cat("Total incluido en análisis:", total_n, "\n")
+```
+
+```{r}
+# Gráfico 2: Públicos general
+datos_publicos_gen <- datos_completos %>%
+  filter(!is.na(P17_1_cat) & !is.na(P17_2_cat)) %>%
+  mutate(Atendido_Publico = ifelse(P17_1 == 1 | P17_2 == 1, "Sí cumple", "No cumple")) %>%
+  group_by(Atendido_Publico) %>%
+  summarise(N = n()) %>%
+  mutate(Porcentaje = N / sum(N))
+
+base_n_publicos_gen <- sum(datos_publicos_gen$N)
+
+ggplot(datos_publicos_gen, aes(x = factor(""), y = Porcentaje, fill = Atendido_Publico)) +
+  geom_bar(stat = "identity", position = position_stack(reverse = TRUE), width = 0.5) +
+  geom_text(aes(label = percent(Porcentaje, accuracy = 1)),
+            position = position_stack(vjust = 0.5, reverse = TRUE),
+            color = "white", fontface = "bold", size = 4.5) +
+  geom_text(aes(x = "", y = 1.2, label = paste0("N=", base_n_publicos_gen)),
+            inherit.aes = FALSE, color = "black", fontface = "bold", size = 4) +
+  scale_fill_manual(values = c("Sí cumple" = "#0077b6", "No cumple" = "#4fa8d9")) +
+  scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.1))) +
+  coord_flip() +
+  labs(title = "Atención en establecimientos de salud públicos", x = "", y = "") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold", margin = margin(b = 15)),
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(size = 10),
+    legend.position = "bottom",
+    legend.text = element_text(size = 11),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(t = 20, r = 20, b = 20, l = 20)
+  )
+```
+
+```{r}
+# 3. GRÁFICOS PARA ESTABLECIMIENTOS PRIVADOS
+
+# Datos para gráfico diferenciado de privados
+datos_privados_dif <- datos_completos %>%
+  filter(!is.na(P17_3_cat) & !is.na(P17_4_cat)) %>%
+  select(P17_3_cat, P17_4_cat) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Tipo_Establecimiento",
+    values_to = "Cumple"
+  ) %>%
+  mutate(
+    Tipo_Establecimiento = case_when(
+      Tipo_Establecimiento == "P17_3_cat" ~ "Clínica privada",
+      Tipo_Establecimiento == "P17_4_cat" ~ "Consultorio\nmédico privado"
+    )
+  ) %>%
+  group_by(Tipo_Establecimiento, Cumple) %>%
+  summarise(N = n(), .groups = 'drop_last') %>%
+  mutate(Porcentaje = N / sum(N)) %>%
+  ungroup()
+
+# Bases N para privados diferenciado
+bases_n_privados_dif <- datos_privados_dif %>%
+  group_by(Tipo_Establecimiento) %>%
+  summarise(Base_N = sum(N), .groups = 'drop')
+
+# Gráfico 3: Privados diferenciado
+ggplot(datos_privados_dif, aes(x = Tipo_Establecimiento, y = Porcentaje, fill = Cumple)) +
+  geom_bar(stat = "identity", position = position_stack(reverse = TRUE), width = 0.7) +
+  geom_text(aes(label = percent(Porcentaje, accuracy = 1)),
+            position = position_stack(vjust = 0.5, reverse = TRUE),
+            color = "white", fontface = "bold", size = 3) +
+  geom_text(data = bases_n_privados_dif,
+            aes(x = Tipo_Establecimiento, y = 1.05, label = paste0("N=", Base_N)),
+            inherit.aes = FALSE, hjust = -0.1, size = 3.5, fontface = "bold") +
+  scale_fill_manual(values = c("Sí cumple" = "#0077b6", "No cumple" = "#4fa8d9")) +
+  scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.15))) +
+  coord_flip() +
+  labs(title = "Atención en establecimientos de salud privados", x = "", y = "") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold", margin = margin(b = 15)),
+    axis.text.y = element_text(size = 12, hjust = 1, vjust = 0.5),
+    axis.text.x = element_text(size = 10),
+    legend.position = "bottom",
+    legend.text = element_text(size = 11),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(t = 20, r = 40, b = 20, l = 15)
+  )
+```
+
+```{r}
+# Gráfico 4: Privados general
+datos_privados_gen <- datos_completos %>%
+  filter(!is.na(P17_3_cat) & !is.na(P17_4_cat)) %>%
+  mutate(Atendido_Privado = ifelse(P17_3 == 1 | P17_4 == 1, "Sí cumple", "No cumple")) %>%
+  group_by(Atendido_Privado) %>%
+  summarise(N = n()) %>%
+  mutate(Porcentaje = N / sum(N))
+
+base_n_privados_gen <- sum(datos_privados_gen$N)
+
+ggplot(datos_privados_gen, aes(x = factor(""), y = Porcentaje, fill = Atendido_Privado)) +
+  geom_bar(stat = "identity", position = position_stack(reverse = TRUE), width = 0.5) +
+  geom_text(aes(label = percent(Porcentaje, accuracy = 1)),
+            position = position_stack(vjust = 0.5, reverse = TRUE),
+            color = "white", fontface = "bold", size = 4.5) +
+  geom_text(aes(x = "", y = 1.2, label = paste0("N=", base_n_privados_gen)),
+            inherit.aes = FALSE, color = "black", fontface = "bold", size = 4) +
+  scale_fill_manual(values = c("Sí cumple" = "#0077b6", "No cumple" = "#4fa8d9")) +
+  scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.1))) +
+  coord_flip() +
+  labs(title = "Atención en establecimientos de salud privados", x = "", y = "") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold", margin = margin(b = 15)),
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(size = 10),
+    legend.position = "bottom",
+    legend.text = element_text(size = 11),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(t = 20, r = 20, b = 20, l = 20)
+  )
+```
+
+```{r}
+# 4. GRÁFICO 5: TOTAL PARA TODOS LOS ESTABLECIMIENTOS (PÚBLICOS + PRIVADOS)
+
+# Datos para gráfico total (públicos + privados)
+datos_total_completo <- datos_completos %>%
+  filter(!is.na(P17_1_cat) & !is.na(P17_2_cat) & !is.na(P17_3_cat) & !is.na(P17_4_cat)) %>%
+  mutate(
+    Atendido_Total = ifelse(P17_1 == 1 | P17_2 == 1 | P17_3 == 1 | P17_4 == 1, "Sí cumple", "No cumple")
+  ) %>%
+  group_by(Atendido_Total) %>%
+  summarise(N = n()) %>%
+  mutate(Porcentaje = N / sum(N))
+
+base_n_total_completo <- sum(datos_total_completo$N)
+
+# Gráfico 5: Total todos los establecimientos
+ggplot(datos_total_completo, aes(x = factor(""), y = Porcentaje, fill = Atendido_Total)) +
+  geom_bar(stat = "identity", position = position_stack(reverse = TRUE), width = 0.5) +
+  geom_text(aes(label = percent(Porcentaje, accuracy = 1)),
+            position = position_stack(vjust = 0.5, reverse = TRUE),
+            color = "white", fontface = "bold", size = 4.5) +
+  geom_text(aes(x = "", y = 1.2, label = paste0("N=", base_n_total_completo)),
+            inherit.aes = FALSE, color = "black", fontface = "bold", size = 4) +
+  scale_fill_manual(values = c("Sí cumple" = "#0077b6", "No cumple" = "#4fa8d9")) +
+  scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.1))) +
+  coord_flip() +
+  labs(title = "Atención en establecimientos\nde salud (públicos y privados)", x = "", y = "") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold", margin = margin(b = 15)),
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(size = 10),
+    legend.position = "bottom",
+    legend.text = element_text(size = 11),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(t = 20, r = 20, b = 20, l = 20)
+  )
+```
+
+```{r}
+# 5. GRÁFICOS PARA P18 Y COMPARATIVA
+
+# GRÁFICO 6: Total P18 - HORIZONTAL APILADO (sin cuadrículas)
+
+# 1. Preparar datos específicos para el Gráfico 6
+datos_p18_grafico6 <- datos %>%
+  select(P18) %>%
+  mutate(
+    # Convertir a carácter para manejar vacíos
+    P18_char = as.character(P18),
+    # CRITERIO ACTUALIZADO: Sí cumple cuando P18=1 o vacío, No cumple cuando P18=2
+    Categoria = case_when(
+      P18_char == "1" | P18_char == "" ~ "Sí cumple",  # P18=1 o vacío
+      P18_char == "2" ~ "No cumple",                   # Solo P18=2 es "No cumple"
+      TRUE ~ "Excluido"  # Otros valores se excluyen
+    )
+  ) %>%
+  filter(Categoria %in% c("Sí cumple", "No cumple")) %>%  # Solo mantener categorías válidas
+  mutate(Categoria = factor(Categoria, levels = c("Sí cumple", "No cumple")))
+
+# Calcular frecuencias y porcentajes para Gráfico 6
+datos_p18_agg_grafico6 <- datos_p18_grafico6 %>%
+  group_by(Categoria) %>%
+  summarise(N = n()) %>%
+  mutate(Porcentaje = N / sum(N))
+
+# Calcular N total (solo los incluidos en el análisis)
+total_n_grafico6 <- sum(datos_p18_agg_grafico6$N)
+
+# Verificación para Gráfico 6
+cat("=== GRÁFICO 6 - DISTRIBUCIÓN P18 ===\n")
+cat("Sí cumple (P18=1 o vacío):", datos_p18_agg_grafico6$N[datos_p18_agg_grafico6$Categoria == "Sí cumple"], "\n")
+cat("No cumple (P18=2):", datos_p18_agg_grafico6$N[datos_p18_agg_grafico6$Categoria == "No cumple"], "\n")
+cat("Total incluido en análisis:", total_n_grafico6, "\n")
+```
+
+```{r}
+# Gráfico 7: Comparativa por categoría - CORREGIDO
+datos_comparativa <- datos_completos %>%
+  select(P17_1, P17_2, P18) %>%
+  mutate(
+    # Barra 1: P17_1
+    Categoria_P17_1 = case_when(
+      P17_1 == 1 ~ "Sí cumple",
+      P17_1 == 2 ~ "No cumple",
+      TRUE ~ NA_character_
+    ),
+    # Barra 2: P17_2
+    Categoria_P17_2 = case_when(
+      P17_2 == 1 ~ "Sí cumple",
+      P17_2 == 2 ~ "No cumple",
+      TRUE ~ NA_character_
+    ),
+    # Barra 3: P18
+    Categoria_P18 = case_when(
+      P18 == 1 | P18 == "" ~ "Sí cumple",
+      P18 == 2 ~ "No cumple",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  select(Categoria_P17_1, Categoria_P17_2, Categoria_P18) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Variable",
+    values_to = "Categoria"
+  ) %>%
+  filter(!is.na(Categoria)) %>%
+  mutate(
+    Variable = case_when(
+      Variable == "Categoria_P17_1" ~ "Establecimiento de\nsalud público",
+      Variable == "Categoria_P17_2" ~ "ESSALUD",
+      Variable == "Categoria_P18" ~ "Acudió a establecimiento\npúblico o EsSalud"
+    ),
+    Variable = factor(Variable, levels = c("Establecimiento de\nsalud público", 
+                                         "ESSALUD", 
+                                         "Acudió a establecimiento\npúblico o EsSalud"))
+  ) %>%
+  group_by(Variable, Categoria) %>%
+  summarise(N = n(), .groups = 'drop_last') %>%
+  mutate(Porcentaje = N / sum(N)) %>%
+  ungroup()
+
+# Calcular bases N para cada variable
+bases_n_comparativa <- datos_comparativa %>%
+  group_by(Variable) %>%
+  summarise(Base_N = sum(N), .groups = 'drop')
+
+# Verificación
+cat("Bases N por variable:\n")
+print(bases_n_comparativa)
+
+ggplot(datos_comparativa, aes(x = Variable, y = Porcentaje, fill = Categoria)) +
+  geom_bar(stat = "identity", position = position_stack(reverse = TRUE), width = 0.7) +
+  geom_text(aes(label = percent(Porcentaje, accuracy = 1)),
+            position = position_stack(vjust = 0.5, reverse = TRUE),
+            color = "white", fontface = "bold", size = 3.5) +
+  geom_text(data = bases_n_comparativa,
+            aes(x = Variable, y = 1.05, label = paste0("N=", Base_N)),
+            inherit.aes = FALSE, hjust = -0.1, size = 3.5, fontface = "bold") +
+  scale_fill_manual(values = c("Sí cumple" = "#0077b6", "No cumple" = "#4fa8d5"),
+                    name = "Cumplimiento") +
+  scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.15))) +
+  coord_flip() +
+  labs(title = "Comparación por tipo de establecimiento de salud", 
+       subtitle = "Criterios:\n• P17_1: Sí=1, No=2\n• P17_2: Sí=1, No=2\n• P18: Sí=1 o vacío, No=2",
+       x = "", y = "") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold", margin = margin(b = 10)),
+    plot.subtitle = element_text(hjust = 0.5, size = 9, margin = margin(b = 15)),
+    axis.text.y = element_text(size = 12, hjust = 1, vjust = 0.5),
+    axis.text.x = element_text(size = 10),
+    legend.position = "bottom",
+    legend.text = element_text(size = 11),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(t = 20, r = 40, b = 20, l = 15)
+  )
+```
+
+```{r}
+# 6. CREAR TABLAS BASE PARA EXPORTACIÓN
+
+# Función para preparar tablas de resumen
+preparar_tablas_base <- function() {
+  
+  # Tabla 1: Resumen públicos diferenciado
+  tabla_publicos_dif <- datos_publicos_dif %>%
+    mutate(
+      Porcentaje_Formateado = percent(Porcentaje, accuracy = 0.1),
+      Grupo = "Públicos Diferenciado"
+    ) %>%
+    select(Grupo, Tipo_Establecimiento, Cumple, N, Porcentaje, Porcentaje_Formateado)
+  
+  # Tabla 2: Resumen públicos general
+  tabla_publicos_gen <- datos_publicos_gen %>%
+    mutate(
+      Porcentaje_Formateado = percent(Porcentaje, accuracy = 0.1),
+      Grupo = "Públicos General",
+      Base_N = base_n_publicos_gen
+    ) %>%
+    select(Grupo, Atendido_Publico, N, Porcentaje, Porcentaje_Formateado, Base_N)
+  
+  # Tabla 3: Resumen privados diferenciado
+  tabla_privados_dif <- datos_privados_dif %>%
+    mutate(
+      Porcentaje_Formateado = percent(Porcentaje, accuracy = 0.1),
+      Grupo = "Privados Diferenciado"
+    ) %>%
+    select(Grupo, Tipo_Establecimiento, Cumple, N, Porcentaje, Porcentaje_Formateado)
+  
+  # Tabla 4: Resumen privados general
+  tabla_privados_gen <- datos_privados_gen %>%
+    mutate(
+      Porcentaje_Formateado = percent(Porcentaje, accuracy = 0.1),
+      Grupo = "Privados General",
+      Base_N = base_n_privados_gen
+    ) %>%
+    select(Grupo, Atendido_Privado, N, Porcentaje, Porcentaje_Formateado, Base_N)
+  
+  # Tabla 5: Resumen total (públicos + privados)
+  tabla_total_completo <- datos_total_completo %>%
+    mutate(
+      Porcentaje_Formateado = percent(Porcentaje, accuracy = 0.1),
+      Grupo = "Total Públicos + Privados",
+      Base_N = base_n_total_completo
+    ) %>%
+    select(Grupo, Atendido_Total, N, Porcentaje, Porcentaje_Formateado, Base_N)
+  
+  # Tabla 6: Resumen P18
+  tabla_p18 <- datos_p18_total %>%
+    mutate(
+      Porcentaje_Formateado = percent(Porcentaje, accuracy = 0.1),
+      Grupo = "P18 Total",
+      Base_N = base_n_p18
+    ) %>%
+    select(Grupo, P18_cat, N, Porcentaje, Porcentaje_Formateado, Base_N)
+  
+  # Tabla 7: Resumen comparativa
+  tabla_comparativa <- datos_comparativa %>%
+    mutate(
+      Porcentaje_Formateado = percent(Porcentaje, accuracy = 0.1),
+      Grupo = "Comparativa" 
+    ) %>%
+    select(Grupo, Variable, Categoria, N, Porcentaje, Porcentaje_Formateado)
+  
+  # Tabla 8: Estadísticas descriptivas
+  estadisticas <- data.frame(
+    Metrica = c(
+      "Total personas en base original",
+      "Públicos diferenciado - Total observaciones",
+      "Públicos general - Total personas",
+      "Privados diferenciado - Total observaciones", 
+      "Privados general - Total personas",
+      "Total públicos + privados - Total personas",
+      "P18 - Total personas",
+      "Comparativa - Total observaciones",
+      "Porcentaje 'Sí cumple' - Públicos general",
+      "Porcentaje 'Sí cumple' - Privados general",
+      "Porcentaje 'Sí cumple' - Total públicos + privados",
+      "Porcentaje 'Sí cumple' - P18"
+    ),
+    Valor = c(
+      nrow(datos),
+      sum(datos_publicos_dif$N),
+      base_n_publicos_gen,
+      sum(datos_privados_dif$N),
+      base_n_privados_gen,
+      base_n_total_completo,
+      base_n_p18,
+      sum(datos_comparativa$N),
+      percent(filter(datos_publicos_gen, Atendido_Publico == "Sí cumple")$Porcentaje, accuracy = 0.1),
+      percent(filter(datos_privados_gen, Atendido_Privado == "Sí cumple")$Porcentaje, accuracy = 0.1),
+      percent(filter(datos_total_completo, Atendido_Total == "Sí cumple")$Porcentaje, accuracy = 0.1),
+      percent(filter(datos_p18_total, P18_cat == "Sí cumple")$Porcentaje, accuracy = 0.1)
+    )
+  )
+  
+  # Tabla 9: Diccionario de variables
+  diccionario <- data.frame(
+    Variable = c(
+      "P17_1", "P17_2", "P17_3", "P17_4", "P18",
+      "Sí cumple", "No cumple",
+      "Establecimiento de salud público", "ESSALUD", 
+      "Clínica particular", "Consultorio particular"
+    ),
+    Descripcion = c(
+      "Confianza en establecimientos de salud públicos (1=Sí, 2=No)",
+      "Confianza en ESSALUD (1=Sí, 2=No)",
+      "Confianza en clínicas privadas (1=Sí, 2=No)",
+      "Confianza en consultorios médicos privados (1=Sí, 2=No)",
+      "Acudió a establecimiento de salud público (1=Sí, 2=No)",
+      "Indica que la persona cumple con el criterio (respondió Sí)",
+      "Indica que la persona no cumple con el criterio (respondió No)",
+      "Establecimiento de salud del sector público",
+      "Seguro Social de Salud (ESSALUD)",
+      "Establecimiento de salud privado - clínica",
+      "Establecimiento de salud privado - consultorio médico"
+    ),
+    Valores = c(
+      "1, 2", "1, 2", "1, 2", "1, 2", "1, 2",
+      "Categoría binaria", "Categoría binaria",
+      "Tipo de establecimiento", "Tipo de establecimiento",
+      "Tipo de establecimiento", "Tipo de establecimiento"
+    )
+  )
+  
+  return(list(
+    publicos_dif = tabla_publicos_dif,
+    publicos_gen = tabla_publicos_gen,
+    privados_dif = tabla_privados_dif,
+    privados_gen = tabla_privados_gen,
+    total_completo = tabla_total_completo,
+    p18_total = tabla_p18,
+    comparativa = tabla_comparativa,
+    estadisticas = estadisticas,
+    diccionario = diccionario
+  ))
+}
+
+# Preparar todas las tablas
+tablas_base <- preparar_tablas_base()
+```
+
+```{r}
+# 7. EXPORTAR TABLAS BASE A EXCEL
+
+# Crear workbook
+wb <- createWorkbook()
+
+# Agregar hojas con las tablas de los 7 gráficos
+addWorksheet(wb, "01_Publicos_Diferenciado")
+writeDataTable(wb, "01_Publicos_Diferenciado", tablas_base$publicos_dif)
+
+addWorksheet(wb, "02_Publicos_General")
+writeDataTable(wb, "02_Publicos_General", tablas_base$publicos_gen)
+
+addWorksheet(wb, "03_Privados_Diferenciado")
+writeDataTable(wb, "03_Privados_Diferenciado", tablas_base$privados_dif)
+
+addWorksheet(wb, "04_Privados_General")
+writeDataTable(wb, "04_Privados_General", tablas_base$privados_gen)
+
+addWorksheet(wb, "05_Total_Publicos_Privados")
+writeDataTable(wb, "05_Total_Publicos_Privados", tablas_base$total_completo)
+
+addWorksheet(wb, "06_P18_Total")
+writeDataTable(wb, "06_P18_Total", tablas_base$p18_total)
+
+addWorksheet(wb, "07_Comparativa")
+writeDataTable(wb, "07_Comparativa", tablas_base$comparativa)
+
+# Agregar hojas adicionales con información complementaria
+addWorksheet(wb, "08_Estadisticas")
+writeDataTable(wb, "08_Estadisticas", tablas_base$estadisticas)
+
+addWorksheet(wb, "09_Diccionario")
+writeDataTable(wb, "09_Diccionario", tablas_base$diccionario)
+
+# Aplicar formatos
+headerStyle <- createStyle(
+  textDecoration = "bold", fgFill = "#0077b6", fontColour = "white",
+  border = "TopBottomLeftRight", borderColour = "#002b4a"
+)
+
+# Aplicar estilo a todas las hojas
+hojas <- sheets(wb)
+for (hoja in hojas) {
+  addStyle(wb, hoja, headerStyle, rows = 1, cols = 1:10, gridExpand = TRUE)
+  setColWidths(wb, hoja, cols = 1:10, widths = "auto")
+}
+
+# Guardar archivo
+ruta_excel_final <- "C:/Users/ASUS/Documents/OPS/Final/Entregables/Indicadores/Tablas/Indicador_13.xlsx"
+saveWorkbook(wb, ruta_excel_final, overwrite = TRUE)
+
+cat("EXPORTACIÓN COMPLETADA\n")
+cat("Archivo Excel generado:", ruta_excel_final, "\n")
+cat("Hojas incluidas:\n")
+for(hoja in hojas) {
+  cat("  •", hoja, "\n")
+}
+
+cat("\nRESUMEN DE GRÁFICOS GENERADOS:\n")
+cat("1. Públicos Diferenciado\n")
+cat("2. Públicos General\n")
+cat("3. Privados Diferenciado\n")
+cat("4. Privados General\n")
+cat("5. Total Públicos + Privados\n")
+cat("6. P18 Total\n")
+cat("7. Comparativa\n")
+
+# Verificación de que todas las tablas tienen datos
+cat("\nVERIFICACIÓN DE DATOS EN TABLAS:\n")
+cat("01_Publicos_Diferenciado:", nrow(tablas_base$publicos_dif), "filas\n")
+cat("02_Publicos_General:", nrow(tablas_base$publicos_gen), "filas\n")
+cat("03_Privados_Diferenciado:", nrow(tablas_base$privados_dif), "filas\n")
+cat("04_Privados_General:", nrow(tablas_base$privados_gen), "filas\n")
+cat("05_Total_Publicos_Privados:", nrow(tablas_base$total_completo), "filas\n")
+cat("06_P18_Total:", nrow(tablas_base$p18_total), "filas\n")
+cat("07_Comparativa:", nrow(tablas_base$comparativa), "filas\n")
+```
+
+
