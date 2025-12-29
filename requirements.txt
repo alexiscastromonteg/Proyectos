@@ -1,0 +1,15 @@
+shiny
+pandas
+os
+re
+PdfReader
+PdfWriter
+drive
+datetime
+time
+smtplib
+MIMEMultipart
+MIMEText
+MIMEApplication
+formatdate
+traceback
